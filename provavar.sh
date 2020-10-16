@@ -1,0 +1,3 @@
+CIAO='ciaocomeva?'
+
+echo '"'$CIAO'"'
