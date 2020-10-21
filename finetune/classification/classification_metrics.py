@@ -23,6 +23,8 @@ import abc
 import numpy as np
 import scipy
 import sklearn
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import f1_score
 
 from finetune import scorer
 
@@ -65,32 +67,19 @@ class AccuracyScorer(SentenceLevelScorer):
 class F1Scorer(SentenceLevelScorer):
   """Computes F1 for classification tasks."""
 
-  def __init__(self):
+  def __init__(self, labels):
     super(F1Scorer, self).__init__()
-    self._positive_label = 1
-
+    self.labels = labels
   def _get_results(self):
-    n_correct, n_predicted, n_gold = 0, 0, 0
-    for y_true, pred in zip(self._true_labels, self._preds):
-      if pred == self._positive_label:
-        n_gold += 1
-        if pred == self._positive_label:
-          n_predicted += 1
-          if pred == y_true:
-            n_correct += 1
-    if n_correct == 0:
-      p, r, f1 = 0, 0, 0
-    else:
-      p = 100.0 * n_correct / n_predicted
-      r = 100.0 * n_correct / n_gold
-      f1 = 2 * p * r / (p + r)
+    f1 = 100 * f1_score(self._true_labels, self._preds, average='macro')
+    print('Confusion Matrix:')
+    cm = confusion_matrix(self._true_labels, self._preds)
+    print_cm(cm, self.labels)
     return [
-        ('precision', p),
-        ('recall', r),
         ('f1', f1),
         ('loss', self.get_loss()),
     ]
-
+  
 
 class MCCScorer(SentenceLevelScorer):
 
@@ -114,3 +103,39 @@ class RegressionScorer(SentenceLevelScorer):
         ('mse', np.mean(np.square(np.array(self._true_labels) - self._preds))),
         ('loss', self.get_loss()),
     ]
+
+
+
+#UTILS
+
+def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=None):
+    """pretty print for confusion matrixes"""
+    columnwidth = max([len(x) for x in labels] + [5])  # 5 is value length
+    empty_cell = " " * columnwidth
+    
+    # Begin CHANGES
+    fst_empty_cell = (columnwidth-3)//2 * " " + "t/p" + (columnwidth-3)//2 * " "
+    
+    if len(fst_empty_cell) < len(empty_cell):
+        fst_empty_cell = " " * (len(empty_cell) - len(fst_empty_cell)) + fst_empty_cell
+    # Print header
+    print("    " + fst_empty_cell, end=" ")
+    # End CHANGES
+    
+    for label in labels:
+        print("%{0}s".format(columnwidth) % label, end=" ")
+        
+    print()
+    # Print rows
+    for i, label1 in enumerate(labels):
+        print("    %{0}s".format(columnwidth) % label1, end=" ")
+        for j in range(len(labels)):
+            cell = "%{0}.d".format(columnwidth) % cm[i, j]
+            if hide_zeroes:
+                cell = cell if float(cm[i, j]) != 0 else empty_cell
+            if hide_diagonal:
+                cell = cell if i != j else empty_cell
+            if hide_threshold:
+                cell = cell if cm[i, j] > hide_threshold else empty_cell
+            print(cell, end=" ")
+        print()
