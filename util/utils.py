@@ -22,8 +22,11 @@ from __future__ import print_function
 import json
 import pickle
 import sys
+import re
 
 import tensorflow.compat.v1 as tf
+
+from sklearn.metrics import confusion_matrix
 
 
 def load_json(path):
@@ -91,7 +94,7 @@ def nest_dict(d, prefixes, delim="_"):
       if k.startswith(prefix + delim):
         if prefix not in nested:
           nested[prefix] = {}
-        nested[prefix][k.split(delim, 1)[1]] = v
+        nested[prefix][re.split(r'%s' %(prefix + delim), k)[1]] = v
       else:
         nested[k] = v
   return nested

@@ -38,10 +38,18 @@ def get_task(config: configure_finetuning.FinetuningConfig, task_name,
   """Get an instance of a task based on its name."""
   if task_name == "cola":
     return classification_tasks.CoLA(config, tokenizer)
+  elif task_name == "emotion":
+    return classification_tasks.EMOTION(config, tokenizer)
+  elif task_name == "german_hate":
+    return classification_tasks.German_HATE(config, tokenizer)
+  elif task_name == "hate":
+    return classification_tasks.HATE(config, tokenizer)
   elif task_name == "mrpc":
     return classification_tasks.MRPC(config, tokenizer)
   elif task_name == "mnli":
     return classification_tasks.MNLI(config, tokenizer)
+  elif task_name == "sentiment":
+    return classification_tasks.SENTIMENT(config, tokenizer)
   elif task_name == "sst":
     return classification_tasks.SST(config, tokenizer)
   elif task_name == "rte":
