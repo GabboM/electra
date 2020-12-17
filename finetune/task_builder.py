@@ -44,6 +44,8 @@ def get_task(config: configure_finetuning.FinetuningConfig, task_name,
     return classification_tasks.German_HATE(config, tokenizer)
   elif task_name == "hate":
     return classification_tasks.HATE(config, tokenizer)
+  elif task_name == "eng_ger_hate":
+    return classification_tasks.eng_ger_HATE(config, tokenizer)
   elif task_name == "mrpc":
     return classification_tasks.MRPC(config, tokenizer)
   elif task_name == "mnli":

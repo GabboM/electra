@@ -48,7 +48,10 @@ class Preprocessor(object):
     assert len(self._name_to_feature_config) == len(self._feature_specs)
 
   def prepare_train(self):
-    return self._serialize_dataset(self._tasks, True, "train")
+    if self._config.balanced:
+      return self._serialize_balanced_dataset(self._tasks, True, "train")
+    else:
+      return self._serialize_dataset(self._tasks, True, "train")
 
   def prepare_predict(self, tasks, split):
     return self._serialize_dataset(tasks, False, split)
@@ -90,6 +93,46 @@ class Preprocessor(object):
       steps = n_examples // batch_size
 
     return input_fn, steps
+  
+    def _serialize_balanced_dataset(self, tasks, is_training, split):
+      """Write out the dataset as tfrecords."""
+      labels = [self._tasks[i]._label_list for i in range(len(self_tasks))]
+      dataset_name = "_".join(sorted([task.name for task in tasks]))
+      dataset_name += "_" + split
+      dataset_prefix = os.path.join(
+          self._config.preprocessed_data_dir, dataset_name)
+      tfrecords_path = dataset_prefix + ".tfrecord"
+      metadata_path = dataset_prefix + ".metadata"
+      batch_size = (self._config.train_batch_size if is_training else
+                    self._config.eval_batch_size)
+
+      utils.log("Loading dataset", dataset_name)
+      n_examples = None
+      if (self._config.use_tfrecords_if_existing and
+          tf.io.gfile.exists(metadata_path)):
+        n_examples = utils.load_json(metadata_path)["n_examples"]
+
+      if n_examples is None:
+        utils.log("Existing tfrecords not found so creating")
+        examples = []
+        for task in tasks:
+          task_examples = task.get_examples(split)
+          examples += task_examples
+        if is_training:
+          random.shuffle(examples)
+        utils.mkdir(tfrecords_path.rsplit("/", 1)[0])
+        n_examples = self.serialize_examples(
+            examples, is_training, tfrecords_path, batch_size)
+        utils.write_json({"n_examples": n_examples}, metadata_path)
+
+      input_fn = self._input_fn_builder(tfrecords_path, is_training)
+      if is_training:
+        steps = int(n_examples // batch_size * self._config.num_train_epochs)
+      else:
+        steps = n_examples // batch_size
+
+      return input_fn, steps
+
 
   def serialize_examples(self, examples, is_training, output_file, batch_size):
     """Convert a set of `InputExample`s to a TFRecord file."""
@@ -146,17 +189,39 @@ class Preprocessor(object):
   def _input_fn_builder(self, input_file, is_training):
     """Creates an `input_fn` closure to be passed to TPUEstimator."""
 
-    def input_fn(params):
-      """The actual input function."""
-      d = tf.data.TFRecordDataset(input_file)
-      if is_training:
-        d = d.repeat()
-        d = d.shuffle(buffer_size=100)
-      return d.apply(
-          tf.data.experimental.map_and_batch(
-              self._decode_tfrecord,
-              batch_size=params["batch_size"],
-              drop_remainder=True))
+    if self._config.balanced:
+      def input_fn(params):
+        """The actual input function when we want to balance the labels in the dataset - oversampling implementations."""
+        da = tf.data.TFRecordDataset(input_file)
+        import pdb; pdb.set_trace()
+        # da = da.flat_map(
+        #     lambda x: tf.data.Dataset.from_tensors(x).repeat(oversample_classes(self._decode_tfrecord(x)))
+        #   )
+
+        # d = d.filter(undersampling_filter)
+        if is_training:
+          da = da.repeat()
+          da = da.shuffle(buffer_size=100)
+        da = da.apply(
+            tf.data.experimental.map_and_batch(
+                self._decode_tfrecord,
+                batch_size=params["batch_size"],
+                drop_remainder=True))
+        import pdb; pdb.set_trace()
+        return da
+
+    else:
+      def input_fn(params):
+        """The actual input function."""
+        d = tf.data.TFRecordDataset(input_file)
+        if is_training:
+          d = d.repeat()
+          d = d.shuffle(buffer_size=100)
+        return d.apply(
+            tf.data.experimental.map_and_batch(
+                self._decode_tfrecord,
+                batch_size=params["batch_size"],
+                drop_remainder=True))
 
     return input_fn
 
@@ -171,3 +236,52 @@ class Preprocessor(object):
       else:
         example[name] = tensor
     return example
+
+
+# sampling parameters
+oversampling_coef = 0.9 # if equal to 0 then oversample_classes() always returns 1
+undersampling_coef = 0.5 # if equal to 0 then oversampling_filter() always returns True
+
+def oversample_classes(example):
+    """
+    Returns the number of copies of given example
+    """
+    import pdb; pdb.set_trace()
+    class_prob = example['class_prob']
+    class_target_prob = example['class_target_prob']
+    prob_ratio = tf.cast(class_target_prob/class_prob, dtype=tf.float32)
+    # soften ratio is oversampling_coef==0 we recover original distribution
+    prob_ratio = prob_ratio ** oversampling_coef 
+    # for classes with probability higher than class_target_prob we
+    # want to return 1
+    prob_ratio = tf.maximum(prob_ratio, 1) 
+    # for low probability classes this number will be very large
+    repeat_count = tf.floor(prob_ratio)
+    # prob_ratio can be e.g 1.9 which means that there is still 90%
+    # of change that we should return 2 instead of 1
+    repeat_residual = prob_ratio - repeat_count # a number between 0-1
+    residual_acceptance = tf.less_equal(
+                        tf.random_uniform([], dtype=tf.float32), repeat_residual
+    )
+    
+    residual_acceptance = tf.cast(residual_acceptance, tf.int64)
+    repeat_count = tf.cast(repeat_count, dtype=tf.int64)
+    
+    return repeat_count + residual_acceptance
+
+
+def undersampling_filter(example):
+    """
+    Computes if given example is rejected or not.
+    """
+    class_prob = example['class_prob']
+    class_target_prob = example['class_target_prob']
+    prob_ratio = tf.cast(class_target_prob/class_prob, dtype=tf.float32)
+    prob_ratio = prob_ratio ** undersampling_coef
+    prob_ratio = tf.minimum(prob_ratio, 1.0)
+    
+    acceptance = tf.less_equal(tf.random_uniform([], dtype=tf.float32), prob_ratio)
+
+    return acceptance
+
+

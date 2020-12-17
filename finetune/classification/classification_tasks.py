@@ -440,7 +440,6 @@ class STS(RegressionTask):
 
 
 class HATE(ClassificationTask):
-  """Stanford Sentiment Treebank."""
 
   def __init__(self, config: configure_finetuning.FinetuningConfig, tokenizer):
     super(HATE, self).__init__(config, "hate", tokenizer, ["hate", "clean"])
@@ -454,8 +453,21 @@ class HATE(ClassificationTask):
   def get_scorer(self):
     return classification_metrics.F1Scorer(self._label_list)
 
+class eng_ger_HATE(ClassificationTask):
+
+  def __init__(self, config: configure_finetuning.FinetuningConfig, tokenizer):
+    super(eng_ger_HATE, self).__init__(config, "eng_ger_hate", tokenizer, ["hate", "clean"])
+
+  def _create_examples(self, lines, split):
+    if "test" in split:
+      return self._load_glue(lines, split, 1, None, None, True) #this needs to be changed
+    else:
+      return self._load_glue(lines, split, 1, None, 0, False)
+  
+  def get_scorer(self):
+    return classification_metrics.F1Scorer(self._label_list)
+
 class German_HATE(ClassificationTask):
-  """Stanford Sentiment Treebank."""
 
   def __init__(self, config: configure_finetuning.FinetuningConfig, tokenizer):
     super(German_HATE, self).__init__(config, "german_hate", tokenizer, ["hate", "clean"])
@@ -471,7 +483,6 @@ class German_HATE(ClassificationTask):
 
   
 class SENTIMENT(ClassificationTask):
-  """Stanford Sentiment Treebank."""
 
   def __init__(self, config: configure_finetuning.FinetuningConfig, tokenizer):
     super(SENTIMENT, self).__init__(config, "sentiment", tokenizer, ["negative", "neutral", "positive"])
@@ -486,7 +497,6 @@ class SENTIMENT(ClassificationTask):
     return classification_metrics.F1Scorer(self._label_list)
 
 class EMOTION(ClassificationTask):
-  """Stanford Sentiment Treebank."""
 
   def __init__(self, config: configure_finetuning.FinetuningConfig, tokenizer):
     super(EMOTION, self).__init__(config, "emotion", tokenizer, ["anger", "fear", "joy", "love", "neutral", "sadness", "surprise"])

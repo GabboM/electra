@@ -5,14 +5,14 @@
 DATA_DIR='data_fullwiki_multilingual_endefrit'
 SIZE='small'
 MODEL='melectra_'$SIZE'_fullwiki'
-TASK='german_hate'
-OUTPUTDIR=$DATA_DIR'/models/'$MODEL'/finetuning_models/'$TASK'_model_1'
+# TASK='sentiment'
+OUTPUTDIR=$DATA_DIR'/models/'$MODEL'/finetuning_models/hate,german_hate_model_1'
 EXPORTDIR=$DATA_DIR'/exported_models/'$MODEL
 
 python3 run_finetuning.py \
     --data-dir $DATA_DIR \
     --model-name $MODEL \
-    --hparams '{"model_size": "'$SIZE'", "task_names": ["'$TASK'"], "do_train": false, "do_eval": true, "init_checkpoint": "'$OUTPUTDIR'", "learning_rate" : 1e-4, "export_dir" : "'$EXPORTDIR'", "model_hparam_overrides": {"vocab_size": 50000}, "use_tfrecords_if_existing" : false}'
+    --hparams '{"model_size": "'$SIZE'", "task_names": ["hate","german_hate"], "do_train": false, "do_eval": true, "init_checkpoint": "'$OUTPUTDIR'", "learning_rate" : 1e-4, "model_hparam_overrides": {"vocab_size": 50000}, "use_tfrecords_if_existing" : false}'
 
 
 #GERMAN

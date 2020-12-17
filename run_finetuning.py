@@ -22,6 +22,7 @@ from __future__ import print_function
 import argparse
 import collections
 import json
+import os
 
 import tensorflow.compat.v1 as tf
 
@@ -60,6 +61,7 @@ class FinetuningModel(object):
                     tf.cast(num_train_steps, tf.float32))
 
     # Add specific tasks
+    # import pdb; pdb.set_trace()
     self.outputs = {"task_id": features["task_id"]}
     losses = []
     for task in tasks:
@@ -86,6 +88,7 @@ def model_fn_builder(config: configure_finetuning.FinetuningConfig, tasks,
 
     # Load pre-trained weights from checkpoint
     init_checkpoint = config.init_checkpoint
+  
     if pretraining_config is not None:
       init_checkpoint = tf.train.latest_checkpoint(pretraining_config.model_dir)
       utils.log("Using checkpoint", init_checkpoint)
@@ -184,6 +187,16 @@ class ModelRunner(object):
 
   def evaluate(self):
     return {task.name: self.evaluate_task(task) for task in self._tasks}
+  
+  def export(self):
+    tf.gfile.MakeDirs(self._config.export_dir)
+    checkpoint_path = os.path.join(self._config.init_checkpoint, "model.ckpt-63894")
+    squad_serving_input_fn = (
+        build_squad_serving_input_fn(self._config.max_seq_length))
+    utils.log("Starting to export model.")
+    subfolder = self._estimator.export_saved_model(
+        export_dir_base=os.path.join(self._config.export_dir, "saved_model"),
+        serving_input_receiver_fn=squad_serving_input_fn)
 
   def evaluate_task(self, task, split="dev", return_results=True):
     """Evaluate the current model."""
@@ -243,9 +256,37 @@ def write_results(config: configure_finetuning.FinetuningConfig, results):
     f.write(results_str)
   utils.write_pickle(results, config.results_pkl)
 
+def build_squad_serving_input_fn(seq_length):
+  """Builds a serving input fn for raw input."""
+  def _seq_serving_input_fn():
+    """Serving input fn for raw images."""
+    input_ids = tf.placeholder(
+        shape=[1, seq_length], name="input_ids", dtype=tf.int32)
+    input_mask = tf.placeholder(
+        shape=[1, seq_length], name="input_mask", dtype=tf.int32)
+    segment_ids = tf.placeholder(
+        shape=[1, seq_length], name="segment_ids", dtype=tf.int32)
+    task_id = tf.placeholder(
+        shape=[1, seq_length], name="task_id", dtype=tf.int32)
+    sentiment_label_ids = tf.placeholder(
+        shape=[1, seq_length], name="sentiment_label_ids", dtype=tf.int32)
+    sentiment_eid = tf.placeholder(
+        shape=[1, seq_length], name="sentiment_eid", dtype=tf.int32)
+    inputs = {
+        "input_ids": input_ids,
+        "input_mask": input_mask,
+        "segment_ids": segment_ids,
+        "task_id": task_id,
+        "sentiment_label_ids": sentiment_label_ids,
+        "sentiment_eid": sentiment_eid
+    }
+    return tf.estimator.export.ServingInputReceiver(features=inputs,
+                                                    receiver_tensors=inputs)
+  return _seq_serving_input_fn
 
 def run_finetuning(config: configure_finetuning.FinetuningConfig):
   """Run finetuning."""
+  tf.get_variable_scope().reuse_variables() #import pdb; pdb.set_trace()
 
   # Setup for training
   results = []
@@ -257,7 +298,6 @@ def run_finetuning(config: configure_finetuning.FinetuningConfig):
   utils.log_config(config)
   generic_model_dir = config.model_dir
   tasks = task_builder.get_tasks(config)
-
   # Train and evaluate num_trials models with different random seeds
   while config.num_trials < 0 or trial <= config.num_trials:
     config.model_dir = generic_model_dir + "_" + str(trial)
@@ -300,6 +340,28 @@ def run_finetuning(config: configure_finetuning.FinetuningConfig):
       utils.rmrf(config.model_dir)
     trial += 1
 
+  # exporting the model
+  if config.export_dir:
+    # with tf.variable_scope(tf.get_variable_scope(), reuse=True):
+    #   model_runner = ModelRunner(config, tasks)
+    #   tf.gfile.MakeDirs(config.export_dir)
+    #   checkpoint_path = os.path.join(config.init_checkpoint, "model.ckpt-6315")
+    #   squad_serving_input_fn = (
+    #       build_squad_serving_input_fn(config.max_seq_length))
+    #   utils.log("Starting to export model.")
+    #   subfolder = model_runner._estimator.export_saved_model(
+    #       export_dir_base=os.path.join(config.export_dir, "saved_model"),
+    #       serving_input_receiver_fn=squad_serving_input_fn)
+    tf.get_variable_scope().reuse_variables()
+    model_runner = ModelRunner(config, tasks)
+    tf.gfile.MakeDirs(config.export_dir)
+    checkpoint_path = os.path.join(config.init_checkpoint, "model.ckpt-6315")
+    squad_serving_input_fn = (
+        build_squad_serving_input_fn(config.max_seq_length))
+    utils.log("Starting to export model.")
+    subfolder = model_runner._estimator.export_saved_model(
+        export_dir_base=os.path.join(config.export_dir, "saved_model"),
+        serving_input_receiver_fn=squad_serving_input_fn)
 
 def main():
   parser = argparse.ArgumentParser(description=__doc__)
@@ -315,6 +377,7 @@ def main():
   else:
     hparams = json.loads(args.hparams)
   tf.logging.set_verbosity(tf.logging.ERROR)
+  tf.get_variable_scope().reuse_variables()
   run_finetuning(configure_finetuning.FinetuningConfig(
       args.model_name, args.data_dir, **hparams))
 

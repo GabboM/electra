@@ -126,6 +126,12 @@ class FinetuningConfig(object):
     self.test_predictions = os.path.join(
         pretrained_model_dir, "test_predictions",
         "{:}_{:}_{:}_predictions.pkl").format
+    
+    #directory where we want our model to be exported
+    self.export_dir = ''
+    
+    # decide if balancing the dataset during finetuning
+    self.balanced = False
 
     # update defaults with passed-in hyperparameters
     self.update(kwargs)
@@ -162,8 +168,10 @@ class FinetuningConfig(object):
       self.num_train_epochs = 3.0
       self.log_examples = True
 
+
     # passed-in-arguments override (for example) debug-mode defaults
     self.update(kwargs)
+
 
   def update(self, kwargs):
     for k, v in kwargs.items():
